@@ -59,12 +59,10 @@ function getSenderName() {
 /* ================= TOOLBAR ================= */
 
 function findComposeToolBar() {
-    const selectors = ['.btC', '.aDh', '[role="toolbar"]', '.gU.Up'];
-    for (const s of selectors) {
-        const el = document.querySelector(s);
-        if (el) return el;
-    }
-    return null;
+  const composeBox = document.querySelector('[role="dialog"], .AD');
+  if (!composeBox) return null;
+
+  return composeBox.querySelector('.btC');
 }
 
 /* ================= INSERT TEXT SAFELY ================= */
@@ -86,54 +84,50 @@ function insertIntoCompose(text, retries = 10) {
 /* ================= INJECT BUTTON ================= */
 
 function injectButton() {
-    // ✅ DO NOT REMOVE existing button
-    if (document.querySelector('.ai-reply-button')) return;
+  if (document.querySelector('.ai-reply-button')) return;
 
-    const toolbar = findComposeToolBar();
-    if (!toolbar) return;
+  const toolbar = findComposeToolBar();
+  if (!toolbar) return;
 
-    const button = createAIButton();
+  const button = createAIButton();
 
-    button.addEventListener('click', async () => {
-        try {
-            button.innerHTML = 'Generating...';
-            button.disabled = true;
+  button.addEventListener('click', async () => {
+    try {
+      button.innerText = 'Generating...';
+      button.style.pointerEvents = 'none';
 
-            const emailContent = getEmailContent();
+      const emailContent = getEmailContent();
+      const receiverName = extractReceiverFromEmailContent(emailContent);
 
-            const receiverName =
-                extractReceiverFromEmailContent(emailContent);
+      const payload = {
+        emailContent,
+        senderName: getSenderName(),
+        receiverName
+      };
 
-            const payload = {
-                emailContent,
-                senderName: getSenderName(),
-                receiverName
-            };
-
-            console.log("AI REPLY PAYLOAD →", payload);
-
-            const res = await fetch("https://email-reply-generator-production-1037.up.railway.app/api/email/generate", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) throw new Error("API failed");
-
-            const reply = await res.text();
-            insertIntoCompose(reply);
-
-        } catch (e) {
-            console.error(e);
-            alert("Failed to generate reply");
-        } finally {
-            button.innerHTML = 'AI Reply';
-            button.disabled = false;
+      const res = await fetch(
+        'https://email-reply-generator-production-1037.up.railway.app/api/email/generate',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         }
-    });
+      );
 
-    toolbar.insertBefore(button, toolbar.firstChild);
+      const reply = await res.text();
+      insertIntoCompose(reply);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      button.innerText = 'AI Reply';
+      button.style.pointerEvents = 'auto';
+    }
+  });
+
+  toolbar.appendChild(button);
 }
+
 
 /* ================= OBSERVER ================= */
 
