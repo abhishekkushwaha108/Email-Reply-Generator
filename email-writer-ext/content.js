@@ -112,7 +112,7 @@ function injectButton() {
 
             console.log("AI REPLY PAYLOAD →", payload);
 
-            const res = await fetch('http://localhost:8080/api/email/generate', {
+            const res = await fetch("https://email-reply-generator-production-1037.up.railway.app/api/email/generate", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
