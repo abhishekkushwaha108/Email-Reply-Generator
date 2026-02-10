@@ -16,6 +16,8 @@ public class EmailGeneratorController {
 
     @PostMapping("/generate")
     public ResponseEntity<String> generateEmail(@RequestBody EmailRequest emailRequest) {
+
+        System.out.println("CONTROLLER HIT: " + emailRequest.getEmailContent());
         String response = emailGeneratorService.generateEmailReply(emailRequest);
         return ResponseEntity.ok(response);
     }

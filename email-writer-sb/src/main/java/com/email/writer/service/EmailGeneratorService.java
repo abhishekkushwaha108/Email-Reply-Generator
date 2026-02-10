@@ -1,80 +1,117 @@
 package com.email.writer.service;
 
 import com.email.writer.model.EmailRequest;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class EmailGeneratorService {
 
-    private final WebClient webClient;
+    private final RestTemplate restTemplate;
 
-    @Value("${gemini.api.url}")
-    private String geminiApiUrl;
+    @Value("${groq.api.key}")
+    private String apiKey;
 
-    @Value("${gemini.api.key}")
-    private String geminiApiKey;
+    @Value("${groq.api.url}")
+    private String apiUrl;
 
-    public EmailGeneratorService(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.build();
+    @Value("${groq.model}")
+    private String model;
+
+    public EmailGeneratorService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
     }
 
-    public String generateEmailReply(EmailRequest emailRequest) {
-        //Build the prompt
-        String prompt = buildPrompt(emailRequest);
 
-        //Craft a request
-        Map<String, Object> requestBody = Map.of(
-                "contents", new Object[] {
-                     Map.of("parts", new Object[]{
-                             Map.of("text", prompt)
-                     })
-                }
+    /* ================= MAIN ================= */
+
+    public String generateEmailReply(EmailRequest req) {
+
+        String prompt = buildPrompt(req);
+
+        Map<String, Object> body = Map.of(
+                "model", model,
+                "messages", List.of(
+                        Map.of("role", "system", "content",
+                                "You are the recipient of the email. Reply ONLY as the recipient."),
+                        Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.6
         );
 
-        //Do request & get response
-        String response = webClient.post()
-                .uri(geminiApiUrl + "?key=" + geminiApiKey )
-                .header("Content-Type", "application/json")
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
 
-        //Extract Response & Return
-        return extractResponseContent(response);
+        HttpEntity<Map<String, Object>> entity =
+                new HttpEntity<>(body, headers);
 
+        ResponseEntity<Map> response =
+                restTemplate.postForEntity(apiUrl, entity, Map.class);
+
+        Map<?, ?> choice =
+                (Map<?, ?>) ((List<?>) response.getBody().get("choices")).get(0);
+        Map<?, ?> message = (Map<?, ?>) choice.get("message");
+
+        // 🔒 CLEAN AI OUTPUT
+        String aiReply = cleanAiOutput(message.get("content").toString());
+
+
+
+
+        return aiReply;
     }
 
-    private String extractResponseContent(String response) {
-        try {
-            System.out.println("RAW GEMINI RESPONSE: " + response);
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode rootNode = mapper.readTree(response);
-            return rootNode.path("candidates")
-                    .get(0)
-                    .path("content")
-                    .path("parts")
-                    .get(0)
-                    .path("text")
-                    .asText();
-        } catch (Exception e) {
-            return "Error processing request" +e.getMessage() ;
+    /* ================= PROMPT ================= */
+
+    private String buildPrompt(EmailRequest req) {
+
+        String senderName = safe(req.getSenderName());
+        String tone = safe(req.getTone());
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("You are replying to this email as the recipient.\n");
+
+        if (!tone.isEmpty()) {
+            sb.append("Use a ").append(tone).append(" tone.\n");
         }
+
+        sb.append("Start the reply by addressing the sender: ")
+                .append(senderName.isEmpty() ? "Hello" : senderName)
+                .append(".\n");
+
+
+        sb.append("Do not include a subject line.\n");
+        sb.append("Do not include analysis, explanations, or headings.\n");
+        sb.append("Write only the email reply text.\n");
+
+        sb.append("\nOriginal email:\n");
+        sb.append(req.getEmailContent());
+
+        return sb.toString();
     }
 
-    private String buildPrompt(EmailRequest emailRequest) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("Generate a professional email reply for the following email content. Please don't generate a subject line ");
-        if(emailRequest.getTone() != null && !emailRequest.getTone().isEmpty()) {
-            prompt.append("Used a ").append(emailRequest.getTone()).append(" tone");
-        }
-        prompt.append("\nOriginal email: \n").append(emailRequest.getEmailContent());
-        return  prompt.toString();
+
+    /* ================= HELPERS ================= */
+
+
+    private String cleanAiOutput(String text) {
+        if (text == null) return "";
+
+        text = text.replaceAll("(?i)^analysis[\\s\\S]*?\\n\\n", "");
+        text = text.replaceAll("(?i)^analysis of the tone[\\s\\S]*?\\n\\n", "");
+        text = text.replaceAll("(?i)^reply:\\s*", "");
+
+        return text.trim();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.trim();
     }
 }
