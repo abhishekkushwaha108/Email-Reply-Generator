@@ -10,15 +10,7 @@ The project consists of:
 
 ---
 
-## 🚀 Live URLs
 
-### Backend API
-(https://email-reply-generator-production-8c99.up.railway.app/)
-
-### API Endpoint
-POST /api/email/generate
-
----
 
 ## 🏗️ Tech Stack
 
